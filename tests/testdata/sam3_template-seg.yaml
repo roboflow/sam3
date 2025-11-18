@@ -61,6 +61,7 @@ roboflow_train:
   val_transforms:
     - _target_: sam3.train.transforms.basic_for_api.ComposeAPI
       transforms:
+        - _target_: sam3.train.transforms.segmentation.DecodeRle
         - _target_: sam3.train.transforms.basic_for_api.RandomResizeAPI
           sizes: ${scratch.resolution}
           max_size:
@@ -274,7 +275,7 @@ trainer:
         coco_json_loader:
           _target_: sam3.train.data.coco_json_loaders.COCO_FROM_JSON
           include_negatives: true
-          category_chunk_size: 2 # Note: You can increase this based on the memory of your GPU.
+          category_chunk_size: 1 # Note: You can increase this based on the memory of your GPU.
           _partial_: true
         img_folder: ${paths.dataset_path}/test/
         ann_file: ${paths.dataset_path}/test/_annotations.coco.json
