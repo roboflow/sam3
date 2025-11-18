@@ -111,6 +111,7 @@ roboflow_train:
         compute_aux: false
     loss_fn_semantic_seg:
       _target_: sam3.train.loss.loss_fns.SemanticSegCriterion
+      fallback_resolution: ${scratch.resolution}
       presence_head: True
       presence_loss: False  # Change
       focal: True
