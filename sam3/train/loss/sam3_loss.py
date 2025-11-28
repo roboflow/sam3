@@ -200,4 +200,11 @@ class Sam3LossWrapper(torch.nn.Module):
                         else:
                             total_losses[k] += v
 
+        # Final safety check: replace any NaN/Inf in the core loss
+        # This catches any NaN that slipped through individual loss guards
+        if isinstance(total_losses[CORE_LOSS_KEY], torch.Tensor):
+            total_losses[CORE_LOSS_KEY] = torch.nan_to_num(
+                total_losses[CORE_LOSS_KEY], nan=0.0, posinf=1e6, neginf=0.0
+            )
+
         return total_losses

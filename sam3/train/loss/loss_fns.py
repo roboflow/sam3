@@ -113,6 +113,8 @@ def _dice_loss(inputs, targets, num_boxes, loss_on_multimask=False, reduce=True)
         numerator = 2 * (inputs * targets).sum(1)
     denominator = inputs.sum(-1) + targets.sum(-1)
     loss = 1 - (numerator + 1) / (denominator + 1)
+    # Replace NaN/Inf in loss (dice loss should be in [0, 1])
+    loss = torch.nan_to_num(loss, nan=1.0, posinf=1.0, neginf=0.0)
     if loss_on_multimask:
         return loss / num_boxes
     if not reduce:
@@ -162,6 +164,9 @@ def sigmoid_focal_loss(
         if alpha >= 0:
             alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
             loss = alpha_t * loss
+
+    # Replace NaN/Inf in loss (can occur with extreme logits)
+    loss = torch.nan_to_num(loss, nan=0.0, posinf=100.0, neginf=0.0)
 
     if not reduce:
         return loss
@@ -361,6 +366,8 @@ class IABCEMdetr(LossWithWeights):
             )
 
             iou = box_ops.fast_diag_box_iou(src_boxes_xyxy, target_boxes_giou)
+            # Replace NaN/Inf in IoU (IoU should be in [0, 1])
+            iou = torch.nan_to_num(iou, nan=0.0, posinf=1.0, neginf=0.0)
             t = prob[(indices[0], indices[1])] ** self.alpha * iou ** (1 - self.alpha)
             t = torch.clamp(t, 0.01).detach()
             positive_target_classes = target_classes.clone()
@@ -503,6 +510,10 @@ class IABCEMdetr(LossWithWeights):
             task="binary",
         )
 
+        # Replace NaN/Inf in losses
+        loss_bce = torch.nan_to_num(loss_bce, nan=0.0, posinf=100.0, neginf=0.0)
+        presence_loss = torch.nan_to_num(presence_loss, nan=0.0, posinf=100.0, neginf=0.0)
+
         losses = {
             "loss_ce": loss_bce,
             "ce_f1": bce_f1,
@@ -551,6 +562,8 @@ class Boxes(LossWithWeights):
         )
 
         loss_bbox = F.l1_loss(src_boxes, target_boxes, reduction="none")
+        # Replace NaN/Inf in loss_bbox (can occur with extreme predicted boxes)
+        loss_bbox = torch.nan_to_num(loss_bbox, nan=1.0, posinf=1.0, neginf=0.0)
 
         losses = {}
         losses["loss_bbox"] = loss_bbox.sum() / num_boxes
@@ -558,6 +571,8 @@ class Boxes(LossWithWeights):
         loss_giou = 1 - box_ops.fast_diag_generalized_box_iou(
             src_boxes_xyxy, target_boxes_giou
         )
+        # Replace NaN/Inf in loss_giou (GIoU loss should be in [0, 2])
+        loss_giou = torch.nan_to_num(loss_giou, nan=2.0, posinf=2.0, neginf=0.0)
         losses["loss_giou"] = loss_giou.sum() / num_boxes
         return losses
 
@@ -1128,6 +1143,8 @@ class SemanticSegCriterion(LossWithWeights):
                 # should also track presence_acc
                 presence_acc = torch.tensor(0.0, device=loss.device)
 
+            # Replace NaN/Inf in presence loss
+            loss_presence = torch.nan_to_num(loss_presence, nan=0.0, posinf=100.0, neginf=0.0)
             loss_dict["loss_semantic_presence"] = loss_presence
             loss_dict["presence_acc"] = presence_acc
 
@@ -1140,6 +1157,10 @@ class SemanticSegCriterion(LossWithWeights):
 
             loss = (loss * mask.float()).sum() / (nb_valid + 1e-6)
             loss_dice = (loss_dice * mask.float()).sum() / (nb_valid + 1e-6)
+
+        # Replace NaN/Inf in semantic segmentation losses
+        loss = torch.nan_to_num(loss, nan=0.0, posinf=100.0, neginf=0.0)
+        loss_dice = torch.nan_to_num(loss_dice, nan=1.0, posinf=1.0, neginf=0.0)
 
         loss_dict.update(
             {
