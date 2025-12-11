@@ -569,11 +569,15 @@ class BinaryHungarianMatcherV2(nn.Module):
 
         # Compute the L1 cost between boxes
         cost_bbox = torch.cdist(out_bbox, tgt_bbox, p=1)
+        # Replace NaN/Inf with large values to prevent linear_sum_assignment failure
+        cost_bbox = torch.nan_to_num(cost_bbox, nan=1e6, posinf=1e6, neginf=1e6)
 
         # Compute the giou cost betwen boxes
         cost_giou = -generalized_box_iou(
             box_cxcywh_to_xyxy(out_bbox), box_cxcywh_to_xyxy(tgt_bbox)
         )
+        # Replace NaN/Inf (GIoU should be in [-1, 1], so cost_giou in [-1, 1])
+        cost_giou = torch.nan_to_num(cost_giou, nan=0.0, posinf=2.0, neginf=-2.0)
 
         out_prob = self.norm(out_score)
         if not self.focal:
@@ -596,6 +600,9 @@ class BinaryHungarianMatcherV2(nn.Module):
             if not self.stable:
                 cost_class = cost_class.unsqueeze(-1).expand_as(cost_bbox)
 
+        # Replace NaN/Inf in cost_class (can occur with extreme logits)
+        cost_class = torch.nan_to_num(cost_class, nan=1e6, posinf=1e6, neginf=-1e6)
+
         assert cost_class.shape == cost_bbox.shape
 
         # Final cost matrix
@@ -604,6 +611,8 @@ class BinaryHungarianMatcherV2(nn.Module):
             + self.cost_class * cost_class
             + self.cost_giou * cost_giou
         )
+        # Final safety check: replace any remaining NaN/Inf in the cost matrix
+        C = torch.nan_to_num(C, nan=1e9, posinf=1e9, neginf=-1e9)
         # assign a very high cost (1e9) to invalid outputs and targets, so that we can
         # filter them out (in `_do_matching`) from bipartite matching results
         do_filtering = out_is_valid is not None or target_is_valid_padded is not None
